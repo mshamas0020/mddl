@@ -38,7 +38,14 @@ Interpreter::Interpreter( const MIDI::observer& obs )
 
 Interpreter::~Interpreter()
 {
+    // TODO kill execution thread
     scheduler.join();
+}
+
+void Interpreter::join()
+{
+    if ( exec_thread.joinable() )
+        exec_thread.join();
 }
 
 void Interpreter::all_notes_off()

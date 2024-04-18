@@ -46,6 +46,8 @@ int main( int argc, char** argv )
         "Mute all output.", { 'q', "quiet" } );
     args::Flag args_ports( parser, "ports",
         "List all available MIDI ports.", { "ports" } );
+    args::Flag args_time( parser, "time",
+        "Time input files.", { "time" } );
     args::Flag args_translate( parser, "translate",
         "Print text syntax translation of input files without executing.",
         { "translate" } );
@@ -64,6 +66,11 @@ int main( int argc, char** argv )
         return 0;
     }
 
+    if ( args_version ) {
+        std::cout << "MDDL " << MDDL_VERSION << "\n";
+        return 0;
+    }
+
     MIDI::observer obs;
     const auto ports_in = MIDI_input_ports( obs );
     const auto ports_out = MIDI_output_ports( obs );
@@ -75,29 +82,29 @@ int main( int argc, char** argv )
 
     Interpreter mddl( obs );
 
-    if ( true ) {//if ( args_port_in ) {
-        const int port_idx = 0;//args::get( args_port_in );
+    if ( args_port_in ) {
+        const int port_idx = args::get( args_port_in );
         if ( port_idx < 0 || port_idx >= (int )ports_in.size() ) {
             std::cout << "Error: Invalid input port. Use enumeration below:\n";
             print_ports( ports_in, ports_out );
             return 0;
         }
 
-        mddl.open_port_in( ports_in[args::get( args_port_in )] );
+        mddl.open_port_in( ports_in[port_idx] );
     }
 
-    if ( true ) {//if ( args_port_out ) {
-        const int port_idx = 0;//args::get( args_port_out );
-        if ( port_idx < 0 || port_idx >= (int )ports_in.size() ) {
+    if ( args_port_out ) {
+        const int port_idx = args::get( args_port_out );
+        if ( port_idx < 0 || port_idx >= (int )ports_out.size() ) {
             std::cout << "Error: Invalid output port. Use enumeration below:\n";
             print_ports( ports_in, ports_out );
             return 0;
         }
 
-        mddl.open_port_out( ports_out[args::get( args_port_in )] );
+        mddl.open_port_out( ports_out[port_idx] );
     }
 
-    [[maybe_unused]] std::clock_t start_clock = std::clock();
+    [[maybe_unused]] const auto start_clock = std::chrono::steady_clock::now();
 
     // process input files
 
@@ -110,23 +117,28 @@ int main( int argc, char** argv )
         mddl.print();
         return 0;
     }
-    
-    // mddl.print();
 
-    [[maybe_unused]] std::clock_t run_clock = std::clock();
+    [[maybe_unused]] const auto run_clock = std::chrono::steady_clock::now();
 
     mddl.run_head();
 
-    // std::cout << "Runtime: " << (float )(std::clock() - run_clock) / CLOCKS_PER_SEC * 1000.f << " ms\n";
-    // std::cout << "Total: " << (float )(std::clock() - start_clock) / CLOCKS_PER_SEC * 1000.f << " ms\n";
+    if ( args_time ) {
+        mddl.join();
+        const std::chrono::duration<float>  run_time = std::chrono::steady_clock::now() - run_clock;
+        const std::chrono::duration<float>  total_time = std::chrono::steady_clock::now() - start_clock;
+        std::cout << "Run Time: " << run_time.count() << "s\n";
+        std::cout << "Total Time: " << run_time.count() << "s\n";
+        return 0;
+    }
 
-    // if ( !args_port_in )
-    //    return 0;
+    if ( !args_port_in )
+        return 0;
 
     // enter REPL
 
     std::cout << "Welcome to MDDL " << MDDL_VERSION << "\n";
     mddl.listen();
+    mddl.join();
 
     return 0;
 }

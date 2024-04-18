@@ -53,6 +53,7 @@ public:
 
     void run_head();
     void run_tail();
+    void join();
     void thread_run( const ExprRoot* entry );
     void launch_thread_run( const ExprRoot* entry );
 
