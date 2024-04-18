@@ -5,6 +5,7 @@
 
 #include "environment.hpp"
 #include "data_ref.hpp"
+#include "scheduler.hpp"
 
 #include <utility>
 #include <vector>
@@ -14,10 +15,15 @@ namespace MDDL {
 class Runtime
 {
 public:
-    DataRef execute( const Scope* scope );
+    Runtime( Scheduler* scheduler )
+        : scheduler { scheduler }
+    {}
 
-    void attach_stack( const Scope* scope );
-    void release_stack( const Scope* scope );
+    DataRef execute( const ExprRoot* node );
+    DataRef execute_scope( const Scope* scope );
+
+    void push_scope( const Scope* scope );
+    void pop_scope( const Scope* scope );
     void push_to_stack( const DataRef& ref );
 
     std::pair<DataRef, ExprRoot*> process_root( const ExprRoot* root );
@@ -28,6 +34,7 @@ public:
     DataRef process_value_literal( const ValueLiteralExpr* val_expr );
     DataRef process_sequence_literal( const SequenceLiteralExpr* seq_expr );
 
+    Scheduler* scheduler    = nullptr;
     std::vector<DataRef> stack;
     int stack_pos = 0;
 };

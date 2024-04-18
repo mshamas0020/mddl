@@ -6,6 +6,7 @@
 #include "common.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -18,6 +19,8 @@ namespace MDDL {
 static constexpr int OCTAVE = 12;
 
 using Symbol = std::string;
+using Time = std::chrono::high_resolution_clock;
+using Clock = Time::time_point;
 
 template <typename T>
 using SymbolMap = std::map<Symbol, T>;
@@ -37,12 +40,12 @@ inline std::string symbol_to_str( const Symbol& s )
 
     std::string str = note_to_str( note );
     for ( int i = 1; i < (int )s.size(); i ++ ) {
-        const int dist = std::abs( s[i] );
-        note += s[i];
-        if ( s[i] < 0 )
+        const int dist = std::abs( (int )s[i] );
+        note += (int )s[i];
+        if ( (int )s[i] < 0 )
             str += "_";
         if ( dist >= OCTAVE )
-            str += std::to_string( 8 * dist / OCTAVE );
+            str += std::to_string( dist / OCTAVE * 8 );
         if ( note < 0 )
             note = (note % OCTAVE) + OCTAVE;
         str += note_to_str( note );

@@ -36,6 +36,8 @@ set(SOURCES
     ${SRC}/printer.hpp
     ${SRC}/runtime.cpp
     ${SRC}/runtime.hpp
+    ${SRC}/scheduler.cpp
+    ${SRC}/scheduler.hpp
     ${SRC}/sequence.cpp
     ${SRC}/sequence.hpp
     ${SRC}/syntax.cpp

@@ -6,6 +6,7 @@
 #include <cassert>
 #include <exception>
 #include <stdexcept>
+#include <string>
 
 namespace MDDL {
 
@@ -25,25 +26,25 @@ public:
     {}
 };
 
-inline void rt_error( const char* msg = "" )
+inline void rt_error( [[maybe_unused]] const std::string& msg = "Unrecognized" )
 {
     // assert( false );
     throw MDDL_RuntimeError( msg );
 }
 
-inline void rt_assert( bool condition, const char* msg = "" )
+inline void rt_assert( bool condition, const std::string& msg = "Unrecognized" )
 {
     if ( !condition )
         rt_error( msg );
 }
 
-inline void sys_error( const char* msg = "" )
+inline void sys_error( [[maybe_unused]] const std::string& msg = "Unrecognized" )
 {
     // assert( false );
-    //throw MDDL_SysError( msg );
+    throw MDDL_SysError( msg );
 }
 
-inline void sys_assert( bool condition, const char* msg = "" )
+inline void sys_assert( bool condition, [[maybe_unused]] const std::string& msg = "Unrecognized" )
 {
     if ( !condition )
         sys_error( msg );

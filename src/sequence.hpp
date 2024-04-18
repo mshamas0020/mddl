@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <iostream>
 #include <list>
+#include <mutex>
 #include <type_traits>
 #include <vector>
 
@@ -22,8 +23,8 @@ struct Sequence
     {
         uint8_t     pitch       = 0;
         uint8_t     vel         = 0;
-        uint32_t    dur         = 0;
-        uint32_t    wait        = 0;
+        int32_t     dur         = 0;
+        int32_t     wait        = 0;
 
         bool operator==( const Elem& rhs ) const;
         void operator+=( const Elem& rhs );
@@ -43,12 +44,20 @@ struct Sequence
     void note_hold( int64_t idx, int64_t duration );
     void mark_complete() { complete = true; }
 
+    std::vector<Elem> get_data() const;
+
     Elem& at( int64_t idx );
     const Elem& at( int64_t idx ) const { return at( idx ); };
 
     bool empty() const { return (size == 0); }
 
+    Elem& front() { return at( 0 ); }
+    const Elem& front() const { return at( 0 ); }
+    Elem& back() { return at( size - 1 ); }
+    const Elem& back() const { return at( size - 1 ); }
+
     void expand();
+    std::vector<Elem> expanded() const;
     void resize( int64_t end );
     void expect( int64_t end );
     void crop( int64_t start, int64_t length );
@@ -116,12 +125,14 @@ struct Sequence
 
     void print();
 
-    Data    data        = {};
-    Elem    comp        = {};
-    int64_t size        = 0;
-    int32_t ref_count   = 0;
-    bool    compressed  = true;
-    bool    complete    = true;
+    Data        data        = {};
+    Elem        comp        = {};
+    int64_t     size        = 0;
+    int32_t     ref_count   = 0;
+    bool        compressed  = true;
+    bool        complete    = true;
+
+    std::mutex  mtx;
 };
 
 } // namepspace MDDL

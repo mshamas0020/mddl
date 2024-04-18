@@ -9,7 +9,7 @@
 
 namespace MDDL {
 
-inline void ief_wait( int64_t ms )
+inline void ief_sleep( int64_t ms )
 {
     std::this_thread::sleep_for( std::chrono::milliseconds( ms ) );
 }

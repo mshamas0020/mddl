@@ -16,25 +16,23 @@ static const char* SUBSEQ_RESIZE_ERR    = "Cannot resize subsequence.";
 static const char* SUBSEQ_CONCAT_ERR    = "Cannot concatenate to subsequence.";
 static const char* INDEX_BOUNDS_ERR     = "Index is outside sequence bounds.";
 
-static const char* NEW         = "NEW";
-static const char* COMPLETE    = "COMPLETE";
-static const char* ASSIGN      = "ASSIGN";
-static const char* SET         = "SET";
-static const char* RESIZE      = "RESIZE";
-static const char* VALUE       = "VALUE";
-static const char* CONCAT      = "CONCAT";
-static const char* EXTEND      = "EXTEND";
-static const char* INDEX       = "INDEX";
-static const char* LENGTH      = "LENGTH";
-static const char* COMPARE     = "COMPARE";
-static const char* PITCH       = "PITCH";
-static const char* ADD         = "ADD";
-static const char* VELOCITY    = "VELOCITY";
-static const char* SUBTRACT    = "SUBTRACT";
-static const char* DURATION    = "DURATION";
-static const char* MULTIPLY    = "MULTIPLY";
-static const char* WAIT        = "WAIT";
-static const char* DIVIDE      = "DIVIDE";
+static const char* NEW          = "NEW";
+static const char* COMPLETE     = "COMPLETE";
+static const char* ASSIGN       = "ASSIGN";
+static const char* VALUE        = "VALUE";
+static const char* CONCAT       = "CONCAT";
+static const char* EXTEND       = "EXTEND";
+static const char* INDEX        = "INDEX";
+static const char* LENGTH       = "LENGTH";
+static const char* COMPARE      = "COMPARE";
+static const char* PITCH        = "PITCH";
+static const char* ADD          = "ADD";
+static const char* VELOCITY     = "VELOCITY";
+static const char* SUBTRACT     = "SUBTRACT";
+static const char* DURATION     = "DURATION";
+static const char* MULTIPLY     = "MULTIPLY";
+static const char* WAIT         = "WAIT";
+static const char* DIVIDE       = "DIVIDE";
 
 
 inline DataRef& get_stack_ref( Runtime* rt, DataRef ref )
@@ -71,7 +69,7 @@ MDDL_OP_IMPL( OP_DO, NEW, VALUE, NONE, VSEQ )
 MDDL_OP_IMPL( OP_DO, COMPLETE, SEQ_LIT, NONE, VSEQ )
 {
     while ( !lhs.get().complete )
-        ief_wait( 10 );
+        ief_sleep( 10 );
 
     return lhs.elide_copy();
 }
@@ -1156,6 +1154,76 @@ MDDL_OP_IMPL( OP_TI, DIVIDE, VALUE, VALUE, VALUE )
 }
 
 
+
+// IEF
+MDDL_OP_IMPL( IEF_PLAY, "IEF_PLAY", VSEQ, NONE, VOID )
+{
+    rt->scheduler->add_sequence( lhs.get(), lhs.start, lhs.length() );
+    lhs.release();
+    return DataType::VOID;
+}
+
+MDDL_OP_IMPL( IEF_NOTE_ON, "IEF_NOTE_ON", VSEQ, NONE, VOID )
+{
+    const Sequence::Elem e = lhs.get().at( lhs.start );
+    rt->scheduler->note_on( e.pitch, e.vel );
+    lhs.release();
+    return DataType::VOID;
+}
+
+MDDL_OP_IMPL( IEF_NOTE_OFF, "IEF_NOTE_OFF", VSEQ, NONE, VOID )
+{
+    const Sequence::Elem e = lhs.get().at( lhs.start );
+    rt->scheduler->note_off( e.pitch );
+    lhs.release();
+    return DataType::VOID;
+}
+
+MDDL_OP_IMPL( IEF_SLEEP, "IEF_SLEEP", VSEQ, NONE, VOID )
+{
+    const int64_t ns = lhs.length() * rt->scheduler->ticks_to_ns;
+    std::this_thread::sleep_for( std::chrono::nanoseconds( ns ) );
+    lhs.release();
+    return DataType::VOID;
+}
+
+MDDL_OP_IMPL( IEF_PRINT, "IEF_PRINT", VSEQ, NONE, VOID )
+{
+    // C5 A4 E5 E5 G5 Ab1 Eb6 G5 Bb5 E5 Ab4 Bb-1
+    // H  E  L  L  O      W   O  R   L  D   \n
+
+    const Sequence& seq = lhs.get();
+
+    if ( seq.compressed ) {
+        std::cout << std::string( lhs.length(), (char )seq.comp.pitch );
+    } else {
+        const std::vector<Sequence::Elem> data = seq.get_data();
+        auto start = data.cbegin() + lhs.start;
+        auto end = start + lhs.length();
+        for ( auto itr = start; itr < end; itr ++ )
+            std::cout << (char )itr->pitch;
+    }
+
+    lhs.release();
+    return DataType::VOID;
+}
+
+MDDL_OP_IMPL( IEF_PRINTD, "IEF_PRINTD", VSEQ, NONE, VOID )
+{
+    std::cout << std::dec << lhs.length();
+    lhs.release();
+    return DataType::VOID;
+}
+
+
+MDDL_OP_IMPL( IEF_RECORDING, "IEF_RECORDING", SEQ, NONE, VALUE )
+{
+    const bool recording = !lhs.get().complete;
+    lhs.release();
+    return (int64_t )recording;
+}
+
+
 #define MDDL_OP_REGISTER( group, name, lhs_t, rhs_t, return_t ) \
     { OpBookKey( group, DataType::lhs_t, DataType::rhs_t ), \
       OpBookEntry( name, MDDL_OP_FN( group, lhs_t, rhs_t ), DataType::return_t ) }
@@ -1166,18 +1234,18 @@ OpBook op_book = {
     MDDL_OP_REGISTER( OP_DO, NEW, VALUE, NONE, VSEQ ),
     MDDL_OP_REGISTER( OP_DO, COMPLETE, SEQ_LIT, NONE, VSEQ ),
     MDDL_OP_REGISTER( OP_DO, ASSIGN, SEQ, SEQ, SEQ ),
-    MDDL_OP_REGISTER( OP_DO, SET, SEQ, VSEQ, SEQ ),
-    MDDL_OP_REGISTER( OP_DO, SET, SEQ, VATTR, SEQ ),
-    MDDL_OP_REGISTER( OP_DO, RESIZE, SEQ, VALUE, SEQ ),
-    MDDL_OP_REGISTER( OP_DO, SET, VSEQ, VSEQ, VSEQ ),
-    MDDL_OP_REGISTER( OP_DO, SET, VSEQ, VATTR, VSEQ ),
-    MDDL_OP_REGISTER( OP_DO, RESIZE, VSEQ, VALUE, VSEQ ),
-    MDDL_OP_REGISTER( OP_DO, SET, ATTR, VSEQ, ATTR ),
-    MDDL_OP_REGISTER( OP_DO, SET, ATTR, VATTR, ATTR ),
-    MDDL_OP_REGISTER( OP_DO, SET, ATTR, VALUE, ATTR ),
-    MDDL_OP_REGISTER( OP_DO, SET, VATTR, VSEQ, VATTR ),
-    MDDL_OP_REGISTER( OP_DO, SET, VATTR, VATTR, VATTR ),
-    MDDL_OP_REGISTER( OP_DO, SET, VATTR, VALUE, VATTR ),
+    MDDL_OP_REGISTER( OP_DO, ASSIGN, SEQ, VSEQ, SEQ ),
+    MDDL_OP_REGISTER( OP_DO, ASSIGN, SEQ, VATTR, SEQ ),
+    MDDL_OP_REGISTER( OP_DO, ASSIGN, SEQ, VALUE, SEQ ),
+    MDDL_OP_REGISTER( OP_DO, ASSIGN, VSEQ, VSEQ, VSEQ ),
+    MDDL_OP_REGISTER( OP_DO, ASSIGN, VSEQ, VATTR, VSEQ ),
+    MDDL_OP_REGISTER( OP_DO, ASSIGN, VSEQ, VALUE, VSEQ ),
+    MDDL_OP_REGISTER( OP_DO, ASSIGN, ATTR, VSEQ, ATTR ),
+    MDDL_OP_REGISTER( OP_DO, ASSIGN, ATTR, VATTR, ATTR ),
+    MDDL_OP_REGISTER( OP_DO, ASSIGN, ATTR, VALUE, ATTR ),
+    MDDL_OP_REGISTER( OP_DO, ASSIGN, VATTR, VSEQ, VATTR ),
+    MDDL_OP_REGISTER( OP_DO, ASSIGN, VATTR, VATTR, VATTR ),
+    MDDL_OP_REGISTER( OP_DO, ASSIGN, VATTR, VALUE, VATTR ),
 
     // RE, or VALUE/CONCAT/INDEX
     MDDL_OP_REGISTER( OP_RE, VALUE, VSEQ, NONE, VALUE ),
@@ -1288,6 +1356,15 @@ OpBook op_book = {
     MDDL_OP_REGISTER( OP_TI, DIVIDE, VATTR, VATTR, VATTR ),
     MDDL_OP_REGISTER( OP_TI, DIVIDE, VATTR, VALUE, VATTR ),
     MDDL_OP_REGISTER( OP_TI, DIVIDE, VALUE, VALUE, VALUE ),
+
+    // IEF
+    MDDL_OP_REGISTER( IEF_PLAY, "IEF_PLAY", VSEQ, NONE, VOID ),
+    MDDL_OP_REGISTER( IEF_NOTE_ON, "IEF_NOTE_ON", VSEQ, NONE, VOID ),
+    MDDL_OP_REGISTER( IEF_NOTE_OFF, "IEF_NOTE_OFF", VSEQ, NONE, VOID ),
+    MDDL_OP_REGISTER( IEF_SLEEP, "IEF_SLEEP", VSEQ, NONE, VOID ),
+    MDDL_OP_REGISTER( IEF_PRINT, "IEF_PRINT", VSEQ, NONE, VOID ),
+    MDDL_OP_REGISTER( IEF_PRINTD, "IEF_PRINTD", VSEQ, NONE, VOID ),
+    MDDL_OP_REGISTER( IEF_RECORDING, "IEF_RECORDING", SEQ, NONE, VALUE ),
 };
 
 #undef MDDL_OP_FN

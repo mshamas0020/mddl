@@ -102,7 +102,7 @@ struct AST
     void build_from_cst( const CST& cst );
     Node* traverse_cst( const CST::Node* cst, Node* parent, uint8_t split );
 
-    void note_on( uint8_t note );
+    void set_ief_code( OpId code ) { ief_code = code; }
 
     void reset();
 
@@ -123,16 +123,19 @@ class SyntaxParser
 public:
     SyntaxParser() = default;
 
+    void set_tempo( int bpm ) { tempo = bpm; }
+    void set_ppq( int ticks ) { ppq = ticks; }
+
     void process_msg( const MIDI::message& msg, int64_t tick );
+
+    bool get_all_notes_off() const { return notes_active.any(); }
+    int note_count() { return notes_active.count(); }
+
     void note_on( uint8_t note, uint8_t vel, int64_t tick );
     void note_off( uint8_t note, int64_t tick );
-    bool get_all_notes_off() const { return notes_active.any(); }
 
-    void set_humanization( int ticks ) { humanization = ticks; }
 
     const AST& get_ast() { return ast; }
-
-    AST* build_ast() const;
     bool pending_ast() const { return pending; }
 
     bool active_sltx() const { return sltx != nullptr; }
@@ -149,16 +152,19 @@ private:
     void sltx_note_on( uint8_t note, uint8_t vel, int64_t tick );
     void sltx_note_off( uint8_t note, int64_t tick );
 
-    int                 humanization        = 0;
     std::bitset<N_MIDI_NOTES>
                         notes_active        = {};
     bool                pending             = false;
+    OpId                ief_code            = IEF_DEFAULT; 
 
     SeqLit*             sltx                = nullptr;
     std::list<int64_t>  sltx_held           = {};   // idxs
     bool                sltx_forced         = false;
     int64_t             prev_note_on_tick   = 0;
     int64_t             prev_event_tick     = 0;
+
+    int                 tempo               = 120;
+    int                 ppq                 = 960;
 };
 
 } // namespace MDDL

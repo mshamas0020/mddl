@@ -105,6 +105,7 @@ void DataRef::implicit_cast( DataType t )
         case DataType::VALUE:
             return DataRef( DataType::VSEQ, new Sequence( value ) );
         case DataType::UNDEFINED:
+        case DataType::VOID:
         case DataType::INDEXER:
             return DataRef( DataType::VSEQ, new Sequence );
         case DataType::ATTR:
@@ -141,9 +142,12 @@ void DataRef::implicit_cast( DataType t )
             return v;
         case DataType::SEQ:
             return move();
+        case DataType::SEQ_LIT:
+            v = move();
+            v.type = DataType::SEQ;
+            return v;
         case DataType::VSEQ:
             v = elide_copy();
-            v = move();
             v.type = DataType::SEQ;
             return v;
         default: enum_error(); break;

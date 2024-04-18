@@ -12,6 +12,8 @@
 
 namespace MDDL {
 
+static uint8_t MDDL_SYSEX_ID = 0x4d;
+
 namespace MIDI = libremidi;
 
 void CST::reset()
@@ -349,7 +351,8 @@ AST::Node* AST::traverse_cst( const CST::Node* cst, Node* parent, uint8_t split 
 
         node->id = notes_to_symbol( notes );
         node->type = SyntaxType::VALUE_LITERAL;
-        sibling = (cst == nullptr) ? nullptr : cst->sibling;
+        
+        sibling = cst;
         goto exit;
     }
 
@@ -366,7 +369,7 @@ AST::Node* AST::traverse_cst( const CST::Node* cst, Node* parent, uint8_t split 
         if ( (int )notes.size() >= SEQ_LITERAL_MIN_ID_LEN ) {
             node->id = notes_to_symbol( notes );
             node->type = SyntaxType::SEQUENCE_LITERAL;
-            sibling = (cst == nullptr) ? nullptr : cst->sibling;
+            sibling = cst;
             goto exit;
         }
 
@@ -386,7 +389,9 @@ AST::Node* AST::traverse_cst( const CST::Node* cst, Node* parent, uint8_t split 
     error = true;
 
 exit:
-
+    if ( node->id.size() == 0 )
+        node->type = SyntaxType::ERROR;
+        
     if ( node->type != SyntaxType::ERROR )
         node->child = traverse_cst( child, node, split );
 
@@ -457,9 +462,17 @@ void SyntaxParser::process_msg( const MIDI::message& msg, int64_t tick )
         case MIDI::message_type::NOTE_OFF:
             note_off( note, tick );
             break;
+        case MIDI::message_type::SYSTEM_EXCLUSIVE:
+            if ( msg.bytes.size() < 3 )
+                break;
+            if ( msg.bytes[1] == MDDL_SYSEX_ID )
+                ief_code = (OpId )msg.bytes[2];
+            break;
         default:
             break;
     }
+
+    // std::cout << notes_active << "\n";
 
     // cst.print();
     // print_ast( ast );
@@ -467,7 +480,7 @@ void SyntaxParser::process_msg( const MIDI::message& msg, int64_t tick )
 
 void SyntaxParser::note_on( uint8_t note, uint8_t vel, int64_t tick )
 {
-    sys_assert( note >= 0 && note < N_MIDI_NOTES );
+    sys_assert( note < N_MIDI_NOTES );
 
     if ( notes_active[note] )
         return;
@@ -486,7 +499,7 @@ void SyntaxParser::note_on( uint8_t note, uint8_t vel, int64_t tick )
 
 void SyntaxParser::note_off( uint8_t note, int64_t tick )
 {
-    sys_assert( note >= 0 && note < N_MIDI_NOTES );
+    sys_assert( note < N_MIDI_NOTES );
 
     if ( !notes_active[note] )
         return;
@@ -510,6 +523,7 @@ void SyntaxParser::note_off( uint8_t note, int64_t tick )
 
     if ( notes_active.none() ) {
         ast.build_from_cst( cst );
+        ast.set_ief_code( ief_code );
         // ast.print();
         pending = true;
     }
@@ -518,7 +532,12 @@ void SyntaxParser::note_off( uint8_t note, int64_t tick )
 void SyntaxParser::sltx_note_on( uint8_t note, uint8_t vel, int64_t tick )
 {
     Sequence& seq = sltx->ref.get();
-    const int64_t hold = tick - prev_event_tick;
+
+    std::lock_guard<std::mutex> guard( seq.mtx );
+
+    const double ns_to_ticks = 1.0 / 1'000'000'000.f / 60.f * tempo * ppq;
+    const int64_t hold = (int64_t )((tick - prev_event_tick) * ns_to_ticks);
+
 
     for ( int64_t idx : sltx_held )
         seq.note_hold( idx, hold );
@@ -528,7 +547,9 @@ void SyntaxParser::sltx_note_on( uint8_t note, uint8_t vel, int64_t tick )
         return;
     }
 
-    const int64_t wait = (seq.size == 0) ? 0 : tick - prev_note_on_tick;
+    const int64_t wait = (seq.size == 0)
+        ? 0
+        : (int64_t )((tick - prev_note_on_tick) * ns_to_ticks);
     seq.note_on( note, vel, wait );
     sltx_held.push_back( seq.size - 1 );
     
@@ -539,7 +560,11 @@ void SyntaxParser::sltx_note_on( uint8_t note, uint8_t vel, int64_t tick )
 void SyntaxParser::sltx_note_off( uint8_t note, int64_t tick )
 {
     Sequence& seq = sltx->ref.get();
-    const int64_t hold = tick - prev_event_tick;
+
+    std::lock_guard<std::mutex> guard( seq.mtx );
+
+    const double ns_to_ticks = 1.0 / 1'000'000'000.f / 60.f * tempo * ppq;
+    const int64_t hold = (int64_t )((tick - prev_event_tick) * ns_to_ticks);
 
     auto itr = sltx_held.begin();
     while ( itr != sltx_held.end() ) {
@@ -569,6 +594,7 @@ void SyntaxParser::clear()
     ast.reset(); 
     notes_active.reset();
     pending = false;
+    ief_code = IEF_DEFAULT;
 
     sltx = nullptr;
     sltx_held.clear();

@@ -8,12 +8,9 @@
 
 namespace MDDL {
 
-DataRef Runtime::execute( const Scope* scope )
+DataRef Runtime::execute( const ExprRoot* node )
 {
-    attach_stack( scope );
     DataRef return_v( DataType::UNDEFINED );
-
-    const ExprRoot* node = scope->head;
     while ( node != nullptr ) {
         // std::cout << "\nExpr: " << node->expr->to_string() << "\n";
 
@@ -41,20 +38,29 @@ DataRef Runtime::execute( const Scope* scope )
         */
     }
 
-    release_stack( scope );
-
-    return return_v.cast_to_vseq();
+    return return_v;
 }
 
-void Runtime::attach_stack( const Scope* scope )
+DataRef Runtime::execute_scope( const Scope* scope )
+{
+    push_scope( scope );
+
+    const ExprRoot* node = scope->head;
+    const DataRef v = execute( node ).cast_to_vseq();
+
+    pop_scope( scope );
+    return v;
+}
+
+void Runtime::push_scope( const Scope* scope )
 {
     // stack already has scope args initialized /after/ stack pos
-    const int undefined_count = (int )(scope->vars.size() - scope->args.size());
-    for ( int i = 0; i < undefined_count; i ++ )
+    const int stack_target = stack_pos + (int )scope->vars.size();
+    while ( (int )stack.size() < stack_target )
         push_to_stack( DataRef( DataType::SEQ, new Sequence ) );
 }
 
-void Runtime::release_stack( const Scope* scope )
+void Runtime::pop_scope( const Scope* scope )
 {
     const int stack_start = stack_pos;
     const int stack_end = stack_pos + (int )scope->vars.size();
@@ -75,12 +81,17 @@ std::pair<DataRef, ExprRoot*> Runtime::process_root( const ExprRoot* root )
 {
     if ( root->is_branch() ) {
         BranchExpr* br_expr = dynamic_cast<BranchExpr*>( root->expr );
-        if ( br_expr->child == nullptr )
+        if ( br_expr->child == nullptr ) {
+            //std::cout << "TRACE " << root->expr->to_string() << "\n";
+            //std::cout << "Branch down\n";
             return { DataType::VOID, br_expr->branch_down };
+        }
 
         DataRef v = process_operation( br_expr->child );
         assert( v.type == DataType::VALUE );
         
+        //std::cout << "TRACE " << root->expr->to_string() << "\n";
+        //std::cout << (v.value > 0 ? "Branch up\n" : "Branch down\n");
         return { DataType::VOID, v.value > 0 ? br_expr->branch_up : br_expr->branch_down };
     }
 
@@ -89,38 +100,50 @@ std::pair<DataRef, ExprRoot*> Runtime::process_root( const ExprRoot* root )
 
 DataRef Runtime::process_expr( const Expr* expr )
 {
+    DataRef v;
+    // TODO: move this into a virtual member fn of expr
     switch ( expr->expr_type ) {
         case ExprType::FUNCTION_CALL:
-            return process_function_call( dynamic_cast<const FunctionCallExpr*>( expr ) );
+            v = process_function_call( dynamic_cast<const FunctionCallExpr*>( expr ) );
+            break;
         case ExprType::OPERATION:
-            return process_operation( dynamic_cast<const OperationExpr*>( expr ) );
+            v = process_operation( dynamic_cast<const OperationExpr*>( expr ) );
+            break;
         case ExprType::VARIABLE:
-            return process_variable( dynamic_cast<const VariableExpr*>( expr ) );
+            v = process_variable( dynamic_cast<const VariableExpr*>( expr ) );
+            break;
         case ExprType::VALUE_LITERAL:
-            return process_value_literal( dynamic_cast<const ValueLiteralExpr*>( expr ) );
+            v = process_value_literal( dynamic_cast<const ValueLiteralExpr*>( expr ) );
+            break;
         case ExprType::SEQUENCE_LITERAL:
-            return process_sequence_literal( dynamic_cast<const SequenceLiteralExpr*>( expr ) );
-        default: enum_error(); break;
+            v = process_sequence_literal( dynamic_cast<const SequenceLiteralExpr*>( expr ) );
+            break;
+        default:
+            v = DataType::ERROR;
+            break;
     }  
     
-    return { DataType::ERROR };
+    //std::cout << "TRACE " << expr->to_string() << "\n";
+    //v.print();
+    //if ( !v.empty() && v.length() <= 13 )
+    //    v.get().print();
+    return v;
 }
 
 DataRef Runtime::process_function_call( const FunctionCallExpr* fn_expr )
 {
+    //std::cout << "SCOPE " << fn_expr->to_string() << "\n";
     const int curr_stack_pos = stack_pos;
     const int child_stack_pos = (int )stack.size();
     
-    sys_assert( fn_expr->scope != nullptr );
+    rt_assert( fn_expr->scope != nullptr, "Function definition for " + fn_expr->to_string() + " not found." );
     sys_assert( fn_expr->children.size() == fn_expr->scope->args.size() );
 
     for ( const Expr* child : fn_expr->children )
         push_to_stack( process_expr( child ).cast_to_seq() );
 
     stack_pos = child_stack_pos;
-
-    const DataRef& v = execute( fn_expr->scope );
-
+    const DataRef& v = execute_scope( fn_expr->scope );
     stack_pos = curr_stack_pos;
 
     return v;
@@ -133,6 +156,10 @@ DataRef Runtime::process_operation( const OperationExpr* op_expr )
 
     lhs.implicit_cast( op_expr->lhs_type );
     rhs.implicit_cast( op_expr->rhs_type );
+
+    std::mutex lhs_dummy, rhs_dummy;
+    std::lock_guard<std::mutex> lhs_guard( lhs.empty() || lhs.get().ref_count == 1 ? lhs_dummy : lhs.mtx() );
+    std::lock_guard<std::mutex> rhs_guard( rhs.empty() || rhs.get().ref_count == 1 ? rhs_dummy : rhs.mtx() );
 
     DataRef v = op_expr->fn( this, lhs, rhs );
 

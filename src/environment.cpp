@@ -99,15 +99,18 @@ bool Scope::add_to_body( const AST::Node* ast )
         tail = tail->next;
     }
 
+    error = false;
+
     try {
-        if ( ast->type == SyntaxType::BRANCH ) {
-            tail->expr = (Expr* )build_branch( ast );
-        } else if ( ast->type == SyntaxType::OPERATOR ) {
-            tail->expr = (Expr* )build_operation( ast, true );
-        } else {
-            tail->expr = build_expr( nullptr, ast );
-        }
+        tail->expr = build_expr_root( ast );
     } catch ( ... ) {
+        error = true;
+        delete tail->expr;
+        tail->expr = nullptr;
+    }
+
+    if ( tail->expr != nullptr && tail->expr->error ) {
+        error = true;
         delete tail->expr;
         tail->expr = nullptr;
     }
@@ -115,21 +118,31 @@ bool Scope::add_to_body( const AST::Node* ast )
     return tail->expr != nullptr;
 }
 
-Expr* Scope::build_expr( Expr* expr_parent, const AST::Node* ast )
+Expr* Scope::build_expr_root( const AST::Node* ast )
 {
-    Expr* expr;
+    return (ast->type == SyntaxType::OPERATOR)
+        ? (Expr* )build_operation( ast, true )
+        : build_expr( nullptr, ast );
+}
+
+Expr* Scope::build_expr( Expr* expr_parent, const AST::Node* ast, bool leftmost )
+{
+    // TODO: move this into a virtual member fn of expr
+    Expr* expr = nullptr;
     switch ( ast->type ) {
         case SyntaxType::FUNCTION_CALL: expr = build_function_call( ast ); break;
-        // case SyntaxType::BRANCH: expr = build_branch( ast ); break;// only happens at root
-        case SyntaxType::OPERATOR: expr = build_operation( ast ); break;
+        case SyntaxType::BRANCH: expr = build_branch( ast ); break; // only happens at root
+        case SyntaxType::OPERATOR: expr = build_operation( ast, leftmost ); break;
         case SyntaxType::VARIABLE: expr = build_variable( ast ); break;
         case SyntaxType::VALUE_LITERAL: expr = build_value_literal( ast ); break;
         case SyntaxType::SEQUENCE_LITERAL: expr = build_sequence_literal( ast ); break;
-        default: enum_error(); return nullptr;
+        default: return new ErrorExpr; break;
     }
 
-    if ( expr != nullptr )
-        expr->parent = expr_parent;
+    if ( expr == nullptr )
+        return new ErrorExpr;
+
+    expr->parent = expr_parent;
     return expr;
 }
 
@@ -141,8 +154,9 @@ FunctionCallExpr* Scope::build_function_call( const AST::Node* ast )
     int n_args = 0;
 
     while ( child != nullptr ) {
-        Expr* fn_child = build_expr( fn_expr, child );
-        if ( fn_child == nullptr ) { delete fn_expr; return nullptr; }
+        Expr* fn_child = build_expr( fn_expr, child, true );
+        if ( fn_child->error )
+            fn_expr->error = true;
         
         fn_expr->children.push_back( fn_child );
 
@@ -168,14 +182,22 @@ BranchExpr* Scope::build_branch( const AST::Node* ast )
     br_expr->id = ast->id;
     if ( ast->child != nullptr ) {
         br_expr->child = build_operation( ast, false, BranchExpr::COMPARE_OP_ID );
-        if ( br_expr->child == nullptr ) { delete br_expr; return nullptr; }
 
-        sys_assert( br_expr->child->return_type == DataType::VALUE );
+        if ( br_expr->child == nullptr || br_expr->child->error )
+            br_expr->error = true;
+
+        // sys_assert( br_expr->child->return_type == DataType::VALUE );
     }
 
     // it's quicker to traverse the complete body when the scope is fully defined
     // so we'll hold off on finding branch_up/down links for now
     return br_expr;
+}
+
+static OpId op_note_to_id( uint8_t note, uint8_t root_note, OpId ief_code )
+{
+    return (note == 0 && ief_code != IEF_DEFAULT)
+        ? ief_code : note_to_op_id( note, root_note );
 }
 
 OperationExpr* Scope::build_operation( const AST::Node* ast, bool leftmost, OpId force_op )
@@ -184,11 +206,15 @@ OperationExpr* Scope::build_operation( const AST::Node* ast, bool leftmost, OpId
     OperationExpr* op_expr = new OperationExpr();
 
     const bool force_copy = !leftmost;
-    const uint8_t note = (uint8_t )ast->id[0];
-    const OpId op_id = (force_op == OP_UNKNOWN) ? note_to_op_id( note, root_note ) : force_op;
+    const uint8_t note = (uint8_t )ast->note_start;
+    const OpId op_id = (force_op == OP_UNKNOWN)
+        ? op_note_to_id( note, root_note, ief_code ) : force_op;
 
     const AST::Node* lhs = ast->child;
-    if ( lhs == nullptr ) { delete op_expr; return nullptr; }
+    if ( lhs == nullptr ) {
+        delete op_expr;
+        return nullptr; 
+    }
 
     const AST::Node* rhs = lhs->sibling;
 
@@ -198,13 +224,20 @@ OperationExpr* Scope::build_operation( const AST::Node* ast, bool leftmost, OpId
     if ( leftmost && lhs->type == SyntaxType::OPERATOR ) {
         // preserve leftmost
         op_expr->child_lhs = (Expr* )build_operation( lhs, true );
-        if ( op_expr->child_lhs == nullptr ) { delete op_expr; return nullptr; }
 
-        op_expr->child_lhs->parent = op_expr;
+        if ( op_expr->child_lhs != nullptr )
+            op_expr->child_lhs->parent = op_expr;
     } else {
         op_expr->child_lhs = build_expr( op_expr, lhs );
-        if ( op_expr->child_lhs == nullptr ) { delete op_expr; return nullptr; }
     }
+
+    if ( op_expr->child_lhs == nullptr ) {
+        delete op_expr;
+        return nullptr;
+    }
+
+    if ( op_expr->child_lhs->error )
+        op_expr->error = true;
 
     op_expr->lhs_type = op_expr->child_lhs->return_type;
 
@@ -217,7 +250,14 @@ OperationExpr* Scope::build_operation( const AST::Node* ast, bool leftmost, OpId
     }
 
     op_expr->child_rhs = build_expr( op_expr, rhs );
-    if ( op_expr->child_rhs == nullptr ) { delete op_expr; return nullptr; }
+    
+    if ( op_expr->child_rhs == nullptr ) {
+        delete op_expr;
+        return nullptr;
+    }
+
+    if ( op_expr->child_rhs->error )
+        op_expr->error = true;
 
     op_expr->rhs_type = op_expr->child_rhs->return_type;
     op_expr->query_book( force_copy );
@@ -229,7 +269,14 @@ OperationExpr* Scope::build_operation( const AST::Node* ast, bool leftmost, OpId
         new_expr->group = op_id;
         new_expr->child_lhs = op_expr;
         new_expr->child_rhs = build_expr( new_expr, rhs );
-        if ( new_expr->child_rhs == nullptr ) { delete new_expr; return nullptr; }
+
+        if ( new_expr->child_rhs == nullptr ) {
+            delete new_expr;
+            return nullptr;
+        }
+        
+        if ( op_expr->error || new_expr->child_rhs->error )
+            new_expr->error = true;
 
         new_expr->lhs_type = new_expr->child_lhs->return_type;
         new_expr->rhs_type = new_expr->child_rhs->return_type;
@@ -334,7 +381,7 @@ void Scope::resolve_branch_links()
 {
     ExprRoot* node = head;
 
-    while ( node != nullptr ) {
+    while ( node != nullptr && node->expr != nullptr ) {
         if ( !node->is_branch() ) {
             node = node->next;
             continue;
@@ -426,10 +473,16 @@ bool StaticEnvironment::add_ast( const AST& ast )
     const AST::Node* node = ast.head;
     tail->ief_code = ast.ief_code;
 
+    // not much use in having a value literal at the expr root
+    if ( node->type == SyntaxType::VALUE_LITERAL )
+        return false;
+
     if ( node->type == SyntaxType::FUNCTION_DEF ) {
         process_function_def( node->id );
         return false;
     }
+
+    // ast.print();
 
     return tail->add_ast( node );
 }
@@ -466,6 +519,9 @@ void StaticEnvironment::process_function_def( const Symbol& chord )
         if ( tail->stage == Scope::Stage::DEFINED ) {
             // legitimize child
             tail->parent->add_child_scope( tail );
+            
+            // tail->print();
+
             tail = tail->parent;
         }
     } else {

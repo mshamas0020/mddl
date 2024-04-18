@@ -174,8 +174,18 @@ Elem& Sequence::at( int64_t idx )
 
 void Sequence::expand()
 {
-    data = Data( size, comp );
+    data = expanded();
     compressed = false;
+}
+
+std::vector<Elem> Sequence::get_data() const
+{
+    return compressed ? expanded() : data;
+}
+
+std::vector<Elem> Sequence::expanded() const
+{
+    return Data( size, comp );
 }
 
 void Sequence::resize( int64_t end )

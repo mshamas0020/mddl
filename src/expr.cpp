@@ -4,9 +4,10 @@
 
 namespace MDDL {
 
-Expr::Expr( ExprType expr_type, DataType return_type )
+Expr::Expr( ExprType expr_type, DataType return_type, bool error )
     : expr_type     { expr_type }
     , return_type   { return_type }
+    , error         { error }
 {}
 
 FunctionCallExpr::FunctionCallExpr()
@@ -21,7 +22,7 @@ FunctionCallExpr::~FunctionCallExpr()
 
 std::string FunctionCallExpr::to_string() const
 {
-    std::string str = symbol_to_str( chord ) + "( ";
+    std::string str = "FN " + symbol_to_str( chord ) + "( ";
 
     for ( int i = 0; i < (int )children.size(); i ++ ) {
         str += expr_to_string( children[i] );
@@ -47,7 +48,7 @@ OperationExpr::~OperationExpr()
 std::string OperationExpr::to_string() const
 {
     return std::string( name )
-        + "_" + dt_to_string( lhs_type ) + "_" + dt_to_string( rhs_type )
+        // + "_" + dt_to_string( lhs_type ) + "_" + dt_to_string( rhs_type )
         + "( " + operands_to_string() + " )";
 }
 
@@ -105,6 +106,8 @@ void OperationExpr::query_book( bool force_copy )
             return;
         }
     }
+
+    error = true;
 }
 
 void OperationExpr::from_book( const OpBookKey& key, const OpBookEntry& entry )
@@ -129,7 +132,6 @@ BranchExpr::~BranchExpr()
 
 std::string BranchExpr::to_string() const
 {
-    return "BR\n";
     return "BR " + symbol_to_str( id ) + "(" +
         ((child == nullptr) ? "" : " " + child->operands_to_string() + " ")
         + ")";
@@ -163,9 +165,25 @@ SequenceLiteralExpr::SequenceLiteralExpr()
     : Expr( ExprType::SEQUENCE_LITERAL, DataType::SEQ_LIT )
 {}
 
+SequenceLiteralExpr::~SequenceLiteralExpr()
+{
+    ref.release();
+}
+
 std::string SequenceLiteralExpr::to_string() const
 {
     return "[" + std::string( symbol_to_str( id ) ) + "]";
+}
+
+
+
+ErrorExpr::ErrorExpr()
+    : Expr( ExprType::ERROR, DataType::ERROR, true )
+{}
+
+std::string ErrorExpr::to_string() const
+{
+    return "Error";
 }
 
 } // namepspace MDDL

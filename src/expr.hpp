@@ -18,7 +18,8 @@ enum class ExprType {
     FUNCTION_CALL,
     VARIABLE,
     VALUE_LITERAL,
-    SEQUENCE_LITERAL
+    SEQUENCE_LITERAL,
+    ERROR
 };
 
 class Scope;
@@ -27,7 +28,7 @@ class ExprRoot;
 class Expr
 {
 public:
-    Expr( ExprType type, DataType return_type );
+    Expr( ExprType type, DataType return_type, bool error = false );
     virtual ~Expr() = default;
 
     virtual std::string to_string() const = 0;
@@ -35,6 +36,7 @@ public:
     const ExprType  expr_type;
     DataType        return_type = DataType::UNKNOWN;
     Expr*           parent      = nullptr;
+    bool            error       = false;
 };
 
 inline std::string expr_to_string( const Expr* expr )
@@ -87,7 +89,7 @@ public:
     uint8_t         note        = 0;
     OpId            group       = OP_UNKNOWN;
     OpFn            fn          = nullptr;
-    const char*     name        = "";
+    const char*     name        = "UNKNOWN";
 };
 
 class BranchExpr : public Expr
@@ -133,7 +135,7 @@ class SequenceLiteralExpr : public Expr
 {
 public:
     SequenceLiteralExpr();
-    ~SequenceLiteralExpr() = default;
+    ~SequenceLiteralExpr();
 
     std::string to_string() const override;
 
@@ -143,6 +145,15 @@ public:
 };
 
 using SeqLit = SequenceLiteralExpr;
+
+class ErrorExpr : public Expr
+{
+public:
+    ErrorExpr();
+    ~ErrorExpr() = default;
+
+    std::string to_string() const override;
+};
 
 } // namepspace MDDL
 

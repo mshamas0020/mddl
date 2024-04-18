@@ -19,6 +19,10 @@
 #include <string>
 #include <ctime>
 
+
+
+static const char* MDDL_VERSION = "v0.1.0";
+
 namespace fs = std::filesystem;
 
 using namespace MDDL;
@@ -71,24 +75,6 @@ int main( int argc, char** argv )
 
     Interpreter mddl( obs );
 
-    std::clock_t start_clock = std::clock();
-
-    // process input files
-
-    for ( const std::string& filename : args::get( args_filenames ) ) {
-        const fs::path smf = find_file( filename );
-        mddl.read_smf( smf );
-    }
-    
-    mddl.print();
-
-    std::clock_t run_clock = std::clock();
-
-    mddl.run();
-
-    std::cout << "Runtime: " << (float )(std::clock() - run_clock) / CLOCKS_PER_SEC * 1000.f << " ms\n";
-    std::cout << "Total: " << (float )(std::clock() - start_clock) / CLOCKS_PER_SEC * 1000.f << " ms\n";
-
     if ( true ) {//if ( args_port_in ) {
         const int port_idx = 0;//args::get( args_port_in );
         if ( port_idx < 0 || port_idx >= (int )ports_in.size() ) {
@@ -98,15 +84,49 @@ int main( int argc, char** argv )
         }
 
         mddl.open_port_in( ports_in[args::get( args_port_in )] );
-    } else {
+    }
+
+    if ( true ) {//if ( args_port_out ) {
+        const int port_idx = 0;//args::get( args_port_out );
+        if ( port_idx < 0 || port_idx >= (int )ports_in.size() ) {
+            std::cout << "Error: Invalid output port. Use enumeration below:\n";
+            print_ports( ports_in, ports_out );
+            return 0;
+        }
+
+        mddl.open_port_out( ports_out[args::get( args_port_in )] );
+    }
+
+    [[maybe_unused]] std::clock_t start_clock = std::clock();
+
+    // process input files
+
+    for ( const std::string& filename : args::get( args_filenames ) ) {
+        const fs::path smf = find_file( filename );
+        mddl.read_smf( smf );
+    }
+
+    if ( args_translate ) {
+        mddl.print();
         return 0;
     }
+    
+    // mddl.print();
 
-    while ( true ) {
-        mddl.listen();
-    }
+    [[maybe_unused]] std::clock_t run_clock = std::clock();
+
+    mddl.run_head();
+
+    // std::cout << "Runtime: " << (float )(std::clock() - run_clock) / CLOCKS_PER_SEC * 1000.f << " ms\n";
+    // std::cout << "Total: " << (float )(std::clock() - start_clock) / CLOCKS_PER_SEC * 1000.f << " ms\n";
+
+    // if ( !args_port_in )
+    //    return 0;
 
     // enter REPL
+
+    std::cout << "Welcome to MDDL " << MDDL_VERSION << "\n";
+    mddl.listen();
 
     return 0;
 }

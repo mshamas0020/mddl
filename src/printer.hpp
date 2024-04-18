@@ -15,8 +15,10 @@ namespace MDDL {
 class Printer
 {
 public:
-    void print( const CST& cst, Scope* scope )
+    void print( const CST& cst )
     {
+        Scope tmp( nullptr, "", Scope::Stage::BODY );
+
         try {
             AST ast;
             ast.build_from_cst( cst );
@@ -26,26 +28,30 @@ public:
                 return;
 
             if ( node->type == SyntaxType::FUNCTION_DEF ) {
-                //process_function_def( node->id );
+                print_line( "DEF " + symbol_to_str( node->id ) );
                 return;
             }
 
-            Expr* expr = scope->build_expr( nullptr, node );
+            Expr* expr = tmp.build_expr_root( node );
 
-            if ( expr != nullptr && expr->expr_type != ExprType::VALUE_LITERAL ) {
-                const std::string& str = expr->to_string();
-                std::cout << str;
-                const int diff = prev_length - (int )str.size();
-                if ( diff > 0 )
-                    std::cout << std::string( diff, ' ' );
-                prev_length = (int )str.size();
-            }
+            if ( expr != nullptr && expr->expr_type != ExprType::VALUE_LITERAL )
+                print_line( expr->to_string() );
+                
             delete expr;
 
             ast.reset();
         } catch ( ... ) {
             
         }
+    }
+
+    void print_line( const std::string& str )
+    {
+        std::cout << str;
+        const int diff = prev_length - (int )str.size();
+        if ( diff > 0 )
+            std::cout << std::string( diff, ' ' );
+        prev_length = (int )str.size();
     }
 
     int prev_length = 0;

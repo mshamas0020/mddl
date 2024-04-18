@@ -25,6 +25,8 @@ struct DataRef
     void release();
     void take( DataRef&& ref );
 
+    std::mutex& mtx() { return ref->mtx; }
+
     void implicit_cast( DataType t );
 
     [[nodiscard]] const Sequence& get() const { return *ref; }

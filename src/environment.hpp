@@ -37,7 +37,8 @@ public:
     void add_child_scope( Scope* child ) { children.push_back( child ); };
 
     bool add_ast( const AST::Node* ast );
-    Expr* build_expr( Expr* expr_parent, const AST::Node* ast );
+    Expr* build_expr( Expr* expr_parent, const AST::Node* ast, bool leftmost = false );
+    Expr* build_expr_root( const AST::Node* ast );
 
     Scope* query_scope( const Symbol& id );
 
@@ -72,6 +73,7 @@ public:
                             unresolved_calls    = {};
     std::list<SeqLit*>      slrx_queue          = {};
     OpId                    ief_code            = IEF_DEFAULT;
+    bool                    error               = false;
 };
 
 class StaticEnvironment
@@ -83,6 +85,9 @@ public:
     bool add_ast( const AST& ast );
     bool slrx_pending() const { return tail->slrx_pending(); }
     SeqLit* slrx_pop() const { return tail->slrx_pop(); }
+
+    bool at_global_scope() { return tail == global; }
+    ExprRoot* get_global_tail() { return global->tail; }
 
     void resolve_links();
 
